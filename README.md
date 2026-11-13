@@ -12,7 +12,7 @@ Cloudflare Pages (project `spinwave`) via wrangler from this directory:
 
 ```bash
 export PATH=~/workspace/.npm-global/bin:$PATH
-python3 ~/workspace/skills/cloudflare/bin/pages_wrangler_deploy.py --project spinwave --dir .
+python3 ~/workspace/custom-connectors/custom.legacy-cloudflare/bin/pages_wrangler_deploy.py --project spinwave --dir .
 ```
 
 ## Structure
