@@ -439,6 +439,7 @@
   .dash-panel{background:var(--parchment);border-radius:12px;box-shadow:0 2px 14px rgba(46,36,25,.12);padding:1.5rem;margin:0 0 1.5rem;}
   .dash-panel h3{font-family:'Cormorant Garamond',serif;font-variant:small-caps;letter-spacing:.08em;font-weight:700;font-size:1.3rem;color:var(--oxblood);margin:0 0 .75rem;}
   .dash-panel p{font-size:1rem;}
+  #pair-qr{background:#fff;border:1px solid var(--gold);padding:.5rem;max-width:100%;height:auto;}
   .dash-join{border-top:1px solid rgba(168,137,74,.4);padding-top:1rem;margin-top:1rem;}
   #dashboard .btn{box-shadow:0 2px 10px rgba(46,36,25,.18);border-radius:8px;letter-spacing:.12em;text-indent:0;}
   .dash-join .btn{display:block;width:100%;margin:0 0 .6rem;white-space:nowrap;}
@@ -575,6 +576,12 @@
         <h3>Verified wallet</h3>
         <p id="verified-wallet-line">Checking your verified wallet…</p>
         <button class="btn" type="button" id="verify-wallet" hidden>Verify this wallet</button>
+        <button class="btn" type="button" id="pair-phone-wallet" hidden>Pair a phone wallet</button>
+        <div id="pair-box" hidden>
+          <p id="pair-status" role="status" aria-live="polite"></p>
+          <p><canvas id="pair-qr" width="220" height="220" aria-label="Wallet pairing code"></canvas></p>
+          <p><button class="btn" type="button" id="pair-copy">Copy pairing link</button> <button class="btn" type="button" id="pair-cancel">Cancel</button></p>
+        </div>
         <p id="verified-wallet-note" role="status" aria-live="polite"></p>
         <p class="dash-note">Only a signature-verified wallet is ever used for a payment. Verifying now does not move funds.</p>
       </div>
@@ -1088,6 +1095,151 @@
   "use strict";
   fetch("/api/me").then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
     if (d && d.email) { document.body.classList.add("signed-in"); var de = document.getElementById("dash-email"); if (de) de.textContent = "Signed in as " + d.email; }
+  }).catch(function(){});
+})();
+</script>
+<script>
+/* ===== Phone wallet pairing (2026-11-14): QR code via WalletConnect.
+   Same proof as "Verify this wallet", but the wallet lives on the phone:
+   scan the code, sign one message, done. The phone wallet never needs to
+   open this site in a dApp browser. Only personal_sign is ever requested,
+   so pairing can never move funds. The project ID below is public by
+   design (it ships in the page code); no secret is used or stored. */
+(function(){
+  "use strict";
+  var PROJECT_ID = "3d43830965c3f4a792cb7b5fb37c46c6";
+  var SIGN_CLIENT_URL = "https://esm.sh/@walletconnect/sign-client@2.26.0";
+  var QRCODE_URL = "https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js";
+  var CHAIN_ID = "eip155:1";
+  var btn = document.getElementById("pair-phone-wallet");
+  var box = document.getElementById("pair-box");
+  var statusEl = document.getElementById("pair-status");
+  var qrCanvas = document.getElementById("pair-qr");
+  var copyBtn = document.getElementById("pair-copy");
+  var cancelBtn = document.getElementById("pair-cancel");
+  var note = document.getElementById("verified-wallet-note");
+  if (!btn || !box) return;
+  var client = null, topic = null, pairingUri = "", cancelled = false;
+
+  function short(a){ return a.slice(0, 6) + "…" + a.slice(-4); }
+  function hexMessage(msg){
+    var bytes = new TextEncoder().encode(msg);
+    var hex = "";
+    for (var i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, "0");
+    return "0x" + hex;
+  }
+  function loadQrLib(){
+    if (window.QRCode) return Promise.resolve();
+    return new Promise(function(resolve, reject){
+      var s = document.createElement("script");
+      s.src = QRCODE_URL; s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+  function reset(){
+    box.hidden = true;
+    statusEl.textContent = "";
+    pairingUri = "";
+    btn.disabled = false; btn.textContent = "Pair a phone wallet";
+    if (client && topic) { try { client.disconnect({ topic: topic, reason: { code: 6000, message: "Done" } }); } catch (e) {} }
+    topic = null;
+  }
+  function refreshVerified(){
+    fetch("/api/wallet-link").then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
+      var line = document.getElementById("verified-wallet-line");
+      var vb = document.getElementById("verify-wallet");
+      if (d && d.verified && d.address) {
+        if (line) line.textContent = "Verified wallet: " + short(d.address) + ". STANZA payments for your works go to this wallet once payment opens.";
+        var sw = document.getElementById("dash-sum-wallet"); if (sw) sw.textContent = "Verified " + short(d.address);
+        if (vb) vb.hidden = true;
+        btn.hidden = true;
+      }
+    }).catch(function(){});
+    fetch("/api/waitlist").then(function(r){ return r.ok ? r.json() : null; }).then(function(st){
+      var tw = document.getElementById("track-wallet");
+      if (st && st.joined && st.wallet && tw) { tw.textContent = "Waitlist wallet (" + (st.wallet_verified ? "verified" : "unverified — not used for payment") + "): " + short(st.wallet); tw.hidden = false; }
+    }).catch(function(){});
+  }
+  function fail(msg){
+    reset();
+    if (note) note.textContent = msg;
+  }
+  btn.addEventListener("click", function(){
+    cancelled = false;
+    btn.disabled = true; btn.textContent = "Preparing…";
+    statusEl.textContent = "Loading the pairing library…";
+    box.hidden = false;
+    Promise.all([
+      import(SIGN_CLIENT_URL).then(function(m){ return m.SignClient || m.default; }),
+      loadQrLib()
+    ]).then(function(parts){
+      var SignClient = parts[0];
+      if (cancelled) throw new Error("cancelled");
+      return SignClient.init({
+        projectId: PROJECT_ID,
+        metadata: { name: "SpinWave", description: "Verify your wallet for SpinWave.", url: "https://spinwave.tech", icons: ["https://spinwave.tech/spinwave-fox-icon.jpg"] }
+      });
+    }).then(function(c){
+      client = c;
+      if (cancelled) throw new Error("cancelled");
+      return client.connect({ requiredNamespaces: { eip155: { methods: ["personal_sign"], chains: [CHAIN_ID], events: [] } } });
+    }).then(function(res){
+      if (cancelled) throw new Error("cancelled");
+      pairingUri = res.uri;
+      var approval = res.approval;
+      statusEl.textContent = "Scan this code with your phone wallet. No need to open this site inside your wallet's browser — you will only be asked to sign a message proving you control the wallet.";
+      return new Promise(function(resolve, reject){
+        window.QRCode.toCanvas(qrCanvas, pairingUri, { width: 220, margin: 1 }, function(err){ if (err) reject(err); else resolve(approval); });
+      });
+    }).then(function(approval){ return approval(); })
+    .then(function(approved){
+      topic = approved.topic;
+      if (cancelled) throw new Error("cancelled");
+      var accounts = (approved.namespaces && approved.namespaces.eip155 && approved.namespaces.eip155.accounts) || [];
+      if (!accounts.length) throw new Error("noaccount");
+      var addr = accounts[0].split(":").pop().toLowerCase();
+      if (!/^0x[0-9a-f]{40}$/.test(addr)) throw new Error("noaccount");
+      statusEl.textContent = "Wallet connected. Check your phone — sign the message to prove you control " + short(addr) + ".";
+      return fetch("/api/wallet-nonce?address=" + encodeURIComponent(addr)).then(function(r){
+        if (!r.ok) throw new Error("nonce");
+        return r.json();
+      }).then(function(n){
+        return client.request({ topic: topic, chainId: CHAIN_ID, request: { method: "personal_sign", params: [hexMessage(n.message), addr] } }).then(function(sig){
+          return fetch("/api/wallet-link", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address: addr, signature: sig }) });
+        });
+      });
+    }).then(function(r){
+      if (!r.ok) throw new Error("link");
+      return r.json();
+    }).then(function(d){
+      if (d && d.verified) {
+        reset();
+        refreshVerified();
+        if (note) note.textContent = "Phone wallet verified. It does not move funds.";
+      } else {
+        fail("Verification did not complete — try again.");
+      }
+    }).catch(function(err){
+      if (cancelled || (err && err.message === "cancelled")) { reset(); return; }
+      fail("Pairing declined or failed — no harm done, and no wallet was linked.");
+    });
+  });
+  if (cancelBtn) cancelBtn.addEventListener("click", function(){ cancelled = true; reset(); if (note) note.textContent = "Pairing cancelled — no harm done."; });
+  if (copyBtn) copyBtn.addEventListener("click", function(){
+    if (!pairingUri) return;
+    function done(ok){ copyBtn.textContent = ok ? "Copied ✓" : "Copy failed — long-press the code"; setTimeout(function(){ copyBtn.textContent = "Copy pairing link"; }, 2200); }
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(pairingUri).then(function(){ done(true); }, function(){ done(false); });
+      else done(false);
+    } catch (e) { done(false); }
+  });
+  /* Show the button only for signed-in visitors without a verified wallet yet,
+     mirroring the desktop "Verify this wallet" button. */
+  fetch("/api/me").then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
+    if (!d || !d.email) return;
+    fetch("/api/wallet-link").then(function(r){ return r.ok ? r.json() : null; }).then(function(w){
+      if (!w || !w.verified) btn.hidden = false;
+    }).catch(function(){ btn.hidden = false; });
   }).catch(function(){});
 })();
 </script>
