@@ -17,7 +17,7 @@ Run with Reynard
 It is not an investment, and it is not trading yet: the contract is live, the pool is deployed, and no market has formed.
 ## Verify a certificate
 Anyone can check a SpinWave certificate here, with no sign-in. Enter a record ID, a certificate ID, or a Base transaction hash.
-[The tale](https://spinwave.tech/tale.html) · [How it will work](https://spinwave.tech/how.html) · [Trust Center](https://spinwave.tech/trust.html) · [Token status](https://spinwave.tech/token.html)
+[The tale](https://spinwave.tech/tale.html) · [How it will work](https://spinwave.tech/how.html) · [Trust Center](https://spinwave.tech/trust.html) · [Token status](https://spinwave.tech/token.html) · [Cross-Chain](https://crosschain.spinwave.tech/)
 
 ## Related
 
