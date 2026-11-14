@@ -73,17 +73,36 @@ async function statusFor(db, email) {
     .prepare('SELECT rowid AS rid, track, wallet FROM waitlist WHERE email = ?')
     .bind(email)
     .first();
-  if (!row) return { joined: false, track: null, wallet: null, position: null };
+  if (!row) return { joined: false, track: null, wallet: null, wallet_verified: false, position: null };
   // rowid is insertion order, so the place in line is exact even when two
   // visitors join in the same second (created_at ties would double-count).
   const pos = await db
     .prepare('SELECT COUNT(*) AS n FROM waitlist WHERE rowid <= ?')
     .bind(row.rid)
     .first();
+  // wallet_verified is true only when the row's wallet matches the
+  // signature-verified link. The lookup is guarded: wallet_links may not
+  // exist yet on a database that has never seen a verification.
+  let walletVerified = false;
+  try {
+    const link = await db
+      .prepare('SELECT address FROM wallet_links WHERE email = ?')
+      .bind(email)
+      .first();
+    walletVerified = !!(
+      row.wallet &&
+      link &&
+      link.address &&
+      String(link.address).toLowerCase() === String(row.wallet).toLowerCase()
+    );
+  } catch {
+    walletVerified = false;
+  }
   return {
     joined: true,
     track: row.track,
     wallet: row.wallet || null,
+    wallet_verified: walletVerified,
     position: pos ? pos.n : null,
   };
 }

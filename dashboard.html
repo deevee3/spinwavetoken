@@ -576,7 +576,7 @@
         <p id="verified-wallet-line">Checking your verified wallet…</p>
         <button class="btn" type="button" id="verify-wallet" hidden>Verify this wallet</button>
         <p id="verified-wallet-note" role="status" aria-live="polite"></p>
-        <p class="dash-note">Only a signature-verified wallet is ever used for a payment. The waitlist wallet below is unverified and is not used for payment. Verifying now does not move funds.</p>
+        <p class="dash-note">Only a signature-verified wallet is ever used for a payment. Verifying now does not move funds.</p>
       </div>
       <div class="dash-panel" id="dash-track">
         <h3>Waitlist</h3>
@@ -804,7 +804,7 @@
       return;
     }
     trackLine.textContent = "You are #" + st.position + " in line on the " + st.track + " track.";
-    if (st.wallet) { trackWallet.textContent = "Waitlist wallet (unverified — not used for payment): " + short(st.wallet); trackWallet.hidden = false; }
+    if (st.wallet) { trackWallet.textContent = "Waitlist wallet (" + (st.wallet_verified ? "verified" : "unverified — not used for payment") + "): " + short(st.wallet); trackWallet.hidden = false; }
     else { trackWallet.hidden = true; }
   }
   function load(){

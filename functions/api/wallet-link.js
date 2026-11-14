@@ -263,5 +263,13 @@ export async function onRequestPost({ request, env }) {
     )
     .bind(email, address, nonceRow.message, signature, now, now)
     .run();
+  // The proven address also lands on the caller's waitlist row when one
+  // exists, so the waitlist shows the verified wallet. No-op when the
+  // caller has not joined the waitlist. Unverified addresses never reach
+  // this point: the signature above must recover this address first.
+  await db
+    .prepare('UPDATE waitlist SET wallet = ? WHERE email = ?')
+    .bind(address, email)
+    .run();
   return json({ verified: true, address, verified_at: now }, 200);
 }
