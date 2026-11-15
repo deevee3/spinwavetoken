@@ -6,6 +6,7 @@ window.SPIN_STATUS = [
   { label: "Trading", text: "Not yet — pool deployed, no trades", state: "pending" },
   { label: "Scholar recognition", text: "Locked — opens Phase 1", state: "locked" },
   { label: "Reader licensing", text: "Locked — opens Phase 2", state: "locked" },
+  { label: "Agent access (Poppy)", text: "Live — public reads only, no sign-in yet", state: "live" },
   { label: "The tale", text: "Open", state: "live" }
 ];
 

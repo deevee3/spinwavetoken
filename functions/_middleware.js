@@ -23,6 +23,7 @@
  * markdown-rendered and never appear in llms.txt / the catalog.
  */
 import { REGISTRY, SITE_URL } from "./md-registry.js";
+import { POPPY_JSON } from "./poppy-data.js";
 
 const INTERNAL = "x-spinwave-md-internal";
 const DESCRIBEDBY =
@@ -271,6 +272,34 @@ export async function onRequest(context) {
 
   // Internal asset/API fetches from this middleware go straight through.
   if (request.headers.get(INTERNAL)) return next();
+
+  // --- Poppy discovery (Stage 1, 2026-11-14): /.well-known/poppy.json
+  // Served ONLY on the canonical Company host, spinwave.tech. The same
+  // deploy also serves spinwave.pages.dev; that host must never speak
+  // as the Company, so it gets a plain 404 here.
+  if (path === "/.well-known/poppy.json") {
+    if (url.hostname !== "spinwave.tech") {
+      return new Response(JSON.stringify({ error: "not_found" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+      });
+    }
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      return new Response(
+        JSON.stringify({ error: "invalid_request", message: "Only GET is supported on this endpoint." }),
+        { status: 405, headers: { "Content-Type": "application/json; charset=utf-8", Allow: "GET" } },
+      );
+    }
+    const headers = {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
+      "Access-Control-Allow-Origin": "*",
+    };
+    if (request.method === "HEAD") {
+      return new Response(null, { status: 200, headers });
+    }
+    return new Response(JSON.stringify(POPPY_JSON, null, 2), { status: 200, headers });
+  }
 
   if (request.method === "OPTIONS" &&
       (path.endsWith(".md") || path.startsWith("/api/md/"))) {
